@@ -150,8 +150,14 @@ def handle_bob_measure(data):
     socketio.emit('bb84_results', results)
     
 @socketio.on('reset_demo')
-def handle_reset(data):
+def handle_reset(data=None):
     bb84_state['status'] = 'idle'
+    bb84_state['message'] = ""
+    bb84_state['alice_bits'] = []
+    bb84_state['alice_bases'] = []
+    bb84_state['quantum_circuits'] = []
+    bb84_state['eve_disturbed'] = False
+    bb84_state['eve_active'] = False
     socketio.emit('demo_reset', {})
 
 
