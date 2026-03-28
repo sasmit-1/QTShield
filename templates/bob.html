@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>QuantumShield - BOB</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.1/socket.io.js"></script>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { background: #0a0a0f; color: #e0e0ff; font-family: 'Segoe UI', sans-serif; min-height: 100vh; }
+  header { background: linear-gradient(135deg, #0d0d1a 0%, #1a0a2e 100%); padding: 20px 40px; border-bottom: 1px solid #2a2a4a; display: flex; align-items: center; justify-content: space-between; }
+  .logo { font-size: 28px; font-weight: 800; background: linear-gradient(90deg, #00ff88, #00d4ff); -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent; }
+  .tagline { font-size: 13px; color: #8888aa; margin-top: 4px; }
+  .panel { padding: 40px; max-width: 800px; margin: 0 auto; }
+  .card { background: #111122; border: 1px solid #2a2a4a; border-radius: 12px; padding: 24px; margin-bottom: 24px; }
+  .card-title { font-size: 13px; font-weight: 600; color: #8888aa; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 16px; }
+  .btn { padding: 12px 28px; border-radius: 8px; border: none; font-size: 14px; font-weight: 600; cursor: pointer; transition: all 0.3s; width: 100%; }
+  .btn-primary { background: linear-gradient(135deg, #00ff88, #00aa55); color: white; }
+  .btn-primary:active { transform: translateY(2px); }
+  .btn-primary:disabled { opacity: 0.5; cursor: not-allowed; }
+  .status { padding: 12px 16px; border-radius: 8px; font-size: 13px; font-weight: 600; margin-top: 12px; display: none; }
+  .status.success { background: #0a2a0a; border: 1px solid #00ff88; color: #00ff88; display: block; }
+  .status.danger  { background: #2a0a0a; border: 1px solid #ff4466; color: #ff4466; display: block; }
+  .status.info    { background: #0a1a2a; border: 1px solid #00d4ff; color: #00d4ff; display: block; }
+  .message-display { background: #0a0a1a; border: 1px solid #2a2a4a; border-radius: 8px; padding: 16px; font-family: monospace; font-size: 13px; min-height: 48px; word-break: break-all; color: #00d4ff; }
+  .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
+  .metric { text-align: center; padding: 16px; }
+  .metric-value { font-size: 36px; font-weight: 800; color: #00d4ff; }
+  .metric-label { font-size: 12px; color: #8888aa; margin-top: 4px; }
+  label { font-size: 12px; color: #8888aa; display: block; margin-bottom: 6px; }
+</style>
+</head>
+<body>
+<header>
+  <div>
+    <div class="logo">Bob Node</div>
+    <div class="tagline">Receiver Terminal</div>
+  </div>
+  <div style="text-align: right">
+    <span style="color:#00ff88; font-weight: bold;">● Online</span><br>
+    <a href="/" style="color:#8888aa; font-size: 12px; text-decoration: none;">Back Home</a>
+  </div>
+</header>
+<div class="panel">
+  <div class="card" id="idle-card">
+    <div class="card-title">Status</div>
+    <div class="status info" id="wait-msg">Idle: Waiting for quantum data...</div>
+  </div>
+  
+  <div class="card" id="action-card" style="display: none; border-color: #00ff88;">
+    <div class="card-title" style="color: #00ff88;">📥 QUBITS RECEIVED</div>
+    <p style="color: #e0e0ff; margin-bottom: 20px; font-size: 14px;">Qubits have arrived. You must measure them to begin decoding the key.</p>
+    <button class="btn btn-primary" id="btn-measure" onclick="measure()">Measure Qubits</button>
+  </div>
+
+  <div class="card" id="results-card" style="display: none;">
+    <div class="card-title">Transmission Results</div>
+    <label>Decrypted Message</label>
+    <div class="message-display" id="decrypted-message" style="color:#00ff88">—</div>
+    
+    <div class="grid-2" style="margin-top: 16px;">
+        <div class="metric"><div class="metric-value" id="keylen">—</div><div class="metric-label">Key Length</div></div>
+        <div class="metric"><div class="metric-value" id="errorrate">—</div><div class="metric-label">Error Rate</div></div>
+    </div>
+    <div id="status" class="status" style="margin-top:16px;"></div>
+  </div>
+</div>
+<script>
+  const socket = io();
+  
+  socket.on('demo_reset', () => {
+    document.getElementById('idle-card').style.display = 'block';
+    document.getElementById('action-card').style.display = 'none';
+    document.getElementById('results-card').style.display = 'none';
+    document.getElementById('wait-msg').textContent = 'Idle: Waiting for quantum data...';
+  });
+
+  socket.on('data_in_transit', (data) => {
+    document.getElementById('wait-msg').textContent = 'Alice sent qubits. Waiting for them to arrive...';
+  });
+
+  socket.on('eve_acted', (data) => {
+    // Qubits have arrived at Bob's end
+    document.getElementById('idle-card').style.display = 'none';
+    document.getElementById('action-card').style.display = 'block';
+    document.getElementById('btn-measure').disabled = false;
+    document.getElementById('btn-measure').innerText = 'Measure Qubits';
+  });
+
+  function measure() {
+    document.getElementById('btn-measure').disabled = true;
+    document.getElementById('btn-measure').innerText = 'Measuring...';
+    socket.emit('bob_measure', {});
+  }
+
+  socket.on('bb84_results', (data) => {
+    document.getElementById('action-card').style.display = 'none';
+    document.getElementById('results-card').style.display = 'block';
+    
+    document.getElementById('decrypted-message').textContent = data.decrypted_message;
+    document.getElementById('keylen').textContent = data.key_length;
+    let err = (data.error_rate * 100).toFixed(1) + '%';
+    document.getElementById('errorrate').textContent = err;
+    
+    let st = document.getElementById('status');
+    st.className = 'status';
+    if (data.eve_detected) {
+      st.classList.add('danger');
+      st.innerHTML = '🚨 High Error Rate Detected! The channel is compromised by an eavesdropper.';
+      document.getElementById('errorrate').style.color = '#ff4466';
+      document.getElementById('decrypted-message').style.color = '#ff4466';
+    } else {
+      st.classList.add('success');
+      st.innerHTML = '✅ Keys match perfectly. Message is authentic.';
+      document.getElementById('errorrate').style.color = '#00ff88';
+      document.getElementById('decrypted-message').style.color = '#00ff88';
+    }
+  });
+</script>
+</body>
+</html>

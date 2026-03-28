@@ -189,56 +189,58 @@ def decrypt_message(encrypted_bits, key):
 # ============================================
 # MAIN FUNCTION: Run Full BB84 Protocol
 # ============================================
-def run_bb84(message="HELLO", n_bits=16, eve_active=False):
-    """
-    Runs the complete BB84 protocol.
-    
-    Parameters:
-        message    : text to encrypt with quantum key
-        n_bits     : number of qubits to send
-        eve_active : whether Eve intercepts
-    
-    Returns:
-        Complete results dict for Member 2 (Flask API)
-        and Member 3/4 (frontend visualisation)
-    """
-
+def bb84_alice_prepare(message="HELLO", n_bits=16):
     alice_bits   = []
     alice_bases  = []
-    bob_bases    = []
-    bob_bits     = []
-    bloch_states = []  # For Bloch sphere animation
+    quantum_circuits = []
+    bloch_states = []
 
     for i in range(n_bits):
-        # Alice randomly picks a bit and basis
         bit   = random.randint(0, 1)
         basis = random.choice(['+', 'x'])
 
         alice_bits.append(bit)
         alice_bases.append(basis)
 
-        # Alice prepares the qubit
         qc, bloch = prepare_qubit(bit, basis)
+        quantum_circuits.append(qc)
         bloch_states.append({
             "step":  i,
             "owner": "alice",
             "state": bloch
         })
+    
+    return alice_bits, alice_bases, quantum_circuits, bloch_states
 
-        # Eve intercepts if active
-        if eve_active:
-            qc, disturbed = eve_intercept(bit, basis)
-            bloch_states.append({
-                "step":     i,
-                "owner":    "eve",
-                "disturbed": disturbed,
-                "state":    get_bloch_coords(qc)
-            })
+def bb84_eve_interfere(quantum_circuits, alice_bits, alice_bases):
+    eve_disturbed = False
+    bloch_states = []
 
-        # Bob randomly picks a basis and measures
+    for i in range(len(quantum_circuits)):
+        qc, disturbed = eve_intercept(alice_bits[i], alice_bases[i])
+        quantum_circuits[i] = qc
+        if disturbed:
+            eve_disturbed = True
+        
+        bloch_states.append({
+            "step":     i,
+            "owner":    "eve",
+            "disturbed": disturbed,
+            "state":    get_bloch_coords(qc)
+        })
+
+    return quantum_circuits, eve_disturbed, bloch_states
+
+def bb84_bob_measure(quantum_circuits, alice_bits, alice_bases, message, eve_disturbed, eve_active):
+    bob_bases    = []
+    bob_bits     = []
+    bloch_states = []
+    n_bits = len(quantum_circuits)
+
+    for i in range(n_bits):
         bob_basis = random.choice(['+', 'x'])
         bob_bases.append(bob_basis)
-        bob_bit = measure_qubit(qc, bob_basis)
+        bob_bit = measure_qubit(quantum_circuits[i], bob_basis)
         bob_bits.append(bob_bit)
 
         bloch_states.append({
@@ -249,7 +251,6 @@ def run_bb84(message="HELLO", n_bits=16, eve_active=False):
         })
 
     # ---- SIFTING ----
-    # Keep only bits where bases matched
     matches = []
     final_key = []
 
@@ -260,7 +261,6 @@ def run_bb84(message="HELLO", n_bits=16, eve_active=False):
             final_key.append(alice_bits[i])
 
     # ---- ERROR RATE ----
-    # Check errors on matching bits
     errors = 0
     matching_count = 0
 
@@ -270,36 +270,23 @@ def run_bb84(message="HELLO", n_bits=16, eve_active=False):
             if alice_bits[i] != bob_bits[i]:
                 errors += 1
 
-    error_rate = round(
-        errors / max(matching_count, 1), 4
-    )
+    error_rate = round(errors / max(matching_count, 1), 4)
     eve_detected = error_rate > 0.1
 
     # ---- MESSAGE ENCRYPTION ----
     if eve_detected:
-        # Key is compromised — throw everything away
-        # This is the entire point of BB84
         encrypted_bits    = []
         encrypted_display = "TRANSMISSION ABORTED"
         decrypted_message = "⚠️ EVE DETECTED — Key discarded. Message never sent."
-
     elif len(final_key) > 0:
-        # Key is clean — safe to encrypt
-        encrypted_bits, used_key = encrypt_message(
-            message, final_key
-        )
-        decrypted_message = decrypt_message(
-            encrypted_bits, final_key
-        )
-        encrypted_display = ''.join(
-            map(str, encrypted_bits[:32])
-        ) + "..."
+        encrypted_bits, used_key = encrypt_message(message, final_key)
+        decrypted_message = decrypt_message(encrypted_bits, final_key)
+        encrypted_display = ''.join(map(str, encrypted_bits[:32])) + "..."
     else:
         encrypted_bits    = []
         encrypted_display = "Key too short"
         decrypted_message = "Not enough matching bits"
 
-    # ---- RETURN EVERYTHING ----
     return {
         "alice_bits":          alice_bits,
         "alice_bases":         alice_bases,
@@ -313,10 +300,36 @@ def run_bb84(message="HELLO", n_bits=16, eve_active=False):
         "original_message":    message,
         "encrypted_display":   encrypted_display,
         "decrypted_message":   decrypted_message,
-        "bloch_states":        bloch_states,
+        "bob_bloch_states":    bloch_states,
         "key_length":          len(final_key),
         "matching_bits":       matching_count
     }
+
+
+def run_bb84(message="HELLO", n_bits=16, eve_active=False):
+    """
+    Runs the complete BB84 protocol.
+    """
+    alice_bits, alice_bases, quantum_circuits, alice_bloch = bb84_alice_prepare(message, n_bits)
+    
+    eve_disturbed = False
+    eve_bloch = []
+    if eve_active:
+        quantum_circuits, eve_disturbed, eve_bloch = bb84_eve_interfere(quantum_circuits, alice_bits, alice_bases)
+
+    result = bb84_bob_measure(quantum_circuits, alice_bits, alice_bases, message, eve_disturbed, eve_active)
+    
+    bloch_states = []
+    for i in range(n_bits):
+        bloch_states.append(alice_bloch[i])
+        if eve_active:
+            bloch_states.append(eve_bloch[i])
+        bloch_states.append(result['bob_bloch_states'][i])
+    
+    result['bloch_states'] = bloch_states
+    del result['bob_bloch_states']
+    
+    return result
 
 
 # ============================================

@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>QuantumShield - ALICE</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.1/socket.io.js"></script>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { background: #0a0a0f; color: #e0e0ff; font-family: 'Segoe UI', sans-serif; min-height: 100vh; }
+  header { background: linear-gradient(135deg, #0d0d1a 0%, #1a0a2e 100%); padding: 20px 40px; border-bottom: 1px solid #2a2a4a; display: flex; align-items: center; justify-content: space-between; }
+  .logo { font-size: 28px; font-weight: 800; background: linear-gradient(90deg, #00d4ff, #7b2fff); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+  .tagline { font-size: 13px; color: #8888aa; margin-top: 4px; }
+  .panel { padding: 40px; max-width: 800px; margin: 0 auto; }
+  .card { background: #111122; border: 1px solid #2a2a4a; border-radius: 12px; padding: 24px; margin-bottom: 24px; }
+  .card-title { font-size: 13px; font-weight: 600; color: #8888aa; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 16px; }
+  input, select { background: #0a0a1a; border: 1px solid #2a2a4a; border-radius: 8px; color: #e0e0ff; padding: 10px 16px; font-size: 14px; width: 100%; margin-bottom: 12px; outline: none; transition: border-color 0.3s; }
+  input:focus, select:focus { border-color: #00d4ff; }
+  label { font-size: 12px; color: #8888aa; display: block; margin-bottom: 6px; }
+  .btn { padding: 12px 28px; border-radius: 8px; border: none; font-size: 14px; font-weight: 600; cursor: pointer; transition: all 0.3s; width: 100%; }
+  .btn-primary { background: linear-gradient(135deg, #00d4ff, #7b2fff); color: white; }
+  .btn-primary:active { transform: translateY(2px); }
+  .btn-primary:disabled { opacity: 0.5; cursor: not-allowed; }
+  .status { padding: 12px 16px; border-radius: 8px; font-size: 13px; font-weight: 600; margin-top: 12px; display: none; }
+  .status.success { background: #0a2a0a; border: 1px solid #00ff88; color: #00ff88; display: block; }
+  .status.danger  { background: #2a0a0a; border: 1px solid #ff4466; color: #ff4466; display: block; }
+  .status.info    { background: #0a1a2a; border: 1px solid #00d4ff; color: #00d4ff; display: block; }
+  .message-display { background: #0a0a1a; border: 1px solid #2a2a4a; border-radius: 8px; padding: 16px; font-family: monospace; font-size: 13px; min-height: 48px; word-break: break-all; color: #00d4ff; }
+  .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
+  .metric { text-align: center; padding: 16px; }
+  .metric-value { font-size: 36px; font-weight: 800; color: #00d4ff; }
+  .metric-label { font-size: 12px; color: #8888aa; margin-top: 4px; }
+</style>
+</head>
+<body>
+<header>
+  <div>
+    <div class="logo">Alice Node</div>
+    <div class="tagline">BB84 Quantum Key Sender</div>
+  </div>
+  <div style="text-align: right">
+    <span style="color:#00ff88; font-weight: bold;">● Online</span><br>
+    <a href="/" style="color:#8888aa; font-size: 12px; text-decoration: none;">Back Home</a>
+  </div>
+</header>
+<div class="panel">
+  <div class="card" id="input-card">
+    <div class="card-title">Prepare Transmission</div>
+    <label>Message to Encrypt</label>
+    <input type="text" id="message" value="TOP SECRET DEMO" placeholder="Enter message">
+    <label>Number of Qubits</label>
+    <select id="bits">
+      <option value="64">64</option>
+      <option value="128" selected>128 qubits</option>
+      <option value="256">256 qubits</option>
+    </select>
+    <button class="btn btn-primary" id="send-btn" onclick="sendQubits()">Send Qubits to Bob</button>
+    <button class="btn btn-primary" id="reset-btn" onclick="resetDemo()" style="margin-top: 10px; background: #2a2a4a; display:none;">Reset Demo</button>
+  </div>
+  
+  <div class="card" id="results-card" style="display: none;">
+    <div class="card-title">Transmission Results</div>
+    <div class="grid-2" style="margin-bottom:16px">
+      <div class="metric"><div class="metric-value" id="keylen">—</div><div class="metric-label">Key Length</div></div>
+      <div class="metric"><div class="metric-value" id="errorrate" style="color:#00ff88">—</div><div class="metric-label">Error Rate</div></div>
+    </div>
+    <div id="status" class="status"></div>
+  </div>
+</div>
+<script>
+  const socket = io();
+  function sendQubits() {
+    const msg = document.getElementById('message').value;
+    const bits = document.getElementById('bits').value;
+    socket.emit('alice_send', { message: msg, n_bits: bits });
+    document.getElementById('send-btn').disabled = true;
+    document.getElementById('send-btn').innerText = 'Data on Wire...';
+  }
+  
+  function resetDemo() {
+      socket.emit('reset_demo');
+  }
+
+  socket.on('demo_reset', () => {
+    document.getElementById('send-btn').disabled = false;
+    document.getElementById('send-btn').innerText = 'Send Qubits to Bob';
+    document.getElementById('results-card').style.display = 'none';
+    document.getElementById('reset-btn').style.display = 'none';
+  });
+
+  socket.on('bb84_results', (data) => {
+    document.getElementById('results-card').style.display = 'block';
+    document.getElementById('reset-btn').style.display = 'block';
+    document.getElementById('send-btn').innerText = 'Transmission Complete';
+    
+    document.getElementById('keylen').textContent = data.key_length;
+    let err = (data.error_rate * 100).toFixed(1) + '%';
+    document.getElementById('errorrate').textContent = err;
+    
+    let st = document.getElementById('status');
+    st.className = 'status';
+    if (data.eve_detected) {
+      st.classList.add('danger');
+      st.innerHTML = '🚨 EVE DETECTED — Key discarded. Message never sent.';
+      document.getElementById('errorrate').style.color = '#ff4466';
+    } else {
+      st.classList.add('success');
+      st.innerHTML = '✅ Secure transmission complete. No eavesdropper detected.';
+      document.getElementById('errorrate').style.color = '#00ff88';
+    }
+  });
+</script>
+</body>
+</html>
